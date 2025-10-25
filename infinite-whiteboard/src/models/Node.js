@@ -7,7 +7,6 @@ export class Node {
     this.width = width;
     this.height = height;
     this.color = color;
-    // content holds text content; image holds data URL or path
     this.content = content;
     this.image = image;
     this.connections = connections;

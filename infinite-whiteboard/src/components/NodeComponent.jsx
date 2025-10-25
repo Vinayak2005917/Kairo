@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Group, Rect, Text, Image as KonvaImage, Transformer } from "react-konva";
 
-export default function NodeComponent({ node, onDragEnd, registerRef, onToggle, onRequestEdit, onResize }) {
+export default function NodeComponent({ node, onDragEnd, onDragMove, registerRef, onToggle, onRequestEdit, onResize, onStartConnect, onNodeClick }) {
   const groupRef = useRef(null);
   const [img, setImg] = useState(null);
   const trRef = useRef(null);
@@ -202,8 +202,28 @@ export default function NodeComponent({ node, onDragEnd, registerRef, onToggle, 
         }
       }}
       draggable
-      onClick={() => {
+      dragBoundFunc={(pos) => {
+        // Round to integers to reduce redraws
+        return { x: Math.round(pos.x), y: Math.round(pos.y) };
+      }}
+      onClick={(e) => {
+        // allow parent to handle clicks (used for connection creation). If parent handles it, it can prevent default behavior.
+        if (onNodeClick) {
+          // pass original Konva event so parent can inspect modifiers
+          onNodeClick(node.id, e);
+          return;
+        }
         if (onToggle) onToggle(!node.expanded);
+      }}
+      onDblClick={(e) => {
+        // start interactive connection creation (parent decides behavior)
+        if (onStartConnect) {
+          e.cancelBubble = true;
+          onStartConnect(node.id);
+        }
+      }}
+      onDragMove={(e) => {
+        if (onDragMove) onDragMove(node.id, e.target.x(), e.target.y());
       }}
       onTransformEnd={() => {
         const g = groupRef.current;
@@ -217,7 +237,10 @@ export default function NodeComponent({ node, onDragEnd, registerRef, onToggle, 
         // reset scale
         g.scaleX(1);
         g.scaleY(1);
-        if (onResize) onResize(node.id, newW, newH);
+        // pass back current group x/y too in case transform changed position (scaling from left/top)
+        const curX = Math.round(g.x());
+        const curY = Math.round(g.y());
+        if (onResize) onResize(node.id, Math.round(newW), Math.round(newH), curX, curY);
       }}
       onDragEnd={(e) => {
         onDragEnd(node.id, e.target.x(), e.target.y());
