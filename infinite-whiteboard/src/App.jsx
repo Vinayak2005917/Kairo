@@ -66,6 +66,25 @@ export default function App() {
     loadNodes();
   }, []);
 
+  // Ensure the page/document doesn't show scrollbars that shift the layout.
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    const prevBodyMargin = body.style.margin;
+
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    body.style.margin = "0";
+
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+      body.style.margin = prevBodyMargin;
+    };
+  }, []);
+
   // Save nodes to backend
   const saveNodes = async () => {
     try {
