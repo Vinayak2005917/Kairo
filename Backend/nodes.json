@@ -1,0 +1,54 @@
+{
+    "nodes": [
+        {
+            "id": "1",
+            "label": "Main Idea",
+            "x": 212.0,
+            "y": 224.0,
+            "width": 150.0,
+            "height": 80.0,
+            "color": "#90caf9",
+            "contentType": "text",
+            "content": "This is the central concept.",
+            "connections": []
+        },
+        {
+            "id": "2",
+            "label": "Reference Image",
+            "x": 880.0,
+            "y": 218.0,
+            "width": 150.0,
+            "height": 80.0,
+            "color": "#f48fb1",
+            "contentType": "image",
+            "content": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/SpaceX_Starship_ignition_during_IFT-5.jpg/800px-SpaceX_Starship_ignition_during_IFT-5.jpg",
+            "connections": [
+                "1"
+            ]
+        },
+        {
+            "id": "1761424272836",
+            "label": "New Node",
+            "x": 780.0,
+            "y": 511.0,
+            "width": 150.0,
+            "height": 80.0,
+            "color": "#a5d6a7",
+            "contentType": "text",
+            "content": "",
+            "connections": []
+        },
+        {
+            "id": "1761424572817",
+            "label": "New Node",
+            "x": 263.0,
+            "y": 482.0,
+            "width": 150.0,
+            "height": 80.0,
+            "color": "#a5d6a7",
+            "contentType": "text",
+            "content": "",
+            "connections": []
+        }
+    ]
+}
