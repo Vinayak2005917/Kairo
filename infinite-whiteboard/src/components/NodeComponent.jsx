@@ -1,56 +1,30 @@
-import React, { useRef, useEffect, useState } from "react";
-import { Group, Rect, Text, Image as KonvaImage, Line } from "react-konva";
+  // auto-resize removed; relying on fixed collapsed/expanded sizes managed elsewhere
 
-export default function NodeComponent({
-  node,
-  onDragEnd,
-  onDragMove,
-  registerRef,
-  onToggle,
-  onStartConnect,
-  onCompleteConnect,
-  onNodeClick,
-  isHighlighted,
-  onUpdateNode,
-}) {
-  const groupRef = useRef(null);
-  const stageRef = useRef(null);
-  const [previewImage, setPreviewImage] = useState(null);
-  const [previewVideo, setPreviewVideo] = useState(null);
-  const [imageDisplaySize, setImageDisplaySize] = useState({ w: 0, h: 0 });
-  const audioOverlayRef = useRef(null);
-  const videoOverlayRef = useRef(null);
-
-  // keep Konva group in sync with node props (applies after drag end)
-  useEffect(() => {
-    const g = groupRef.current;
-    if (g) {
-      g.x(node.x);
-      g.y(node.y);
+  const computeTextBlockHeight = (text, contentWidth, fontSize = 12) => {
+    if (!text || !text.trim()) return 0;
+    const font = `${fontSize}px sans-serif`;
+    const words = text.split(/\s+/);
+    let lines = 0;
+    let cur = '';
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      const test = cur.length ? `${cur} ${w}` : w;
+      const tw = measureTextWidth(test, font);
+      if (tw > contentWidth && cur.length > 0) {
+        lines++;
+        cur = w;
+      } else {
+        cur = test;
+      }
     }
-  }, [node.x, node.y]);
-
-  // register this group's ref with parent so arrows can read absolute positions
-  useEffect(() => {
-    const g = groupRef.current;
-    if (registerRef) registerRef(g);
-    return () => {
-      if (registerRef) registerRef(null);
-      // cleanup any overlays
-      removeAudioOverlay();
-      removeVideoOverlay();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registerRef]);
-
-  useEffect(() => {
-    const g = groupRef.current;
-    stageRef.current = g && g.getStage ? g.getStage() : null;
-  }, []);
+    if (cur.length) lines++;
+    const lineHeight = Math.round(fontSize * 1.25);
+    return lines * lineHeight;
+  };
 
   // Build media previews depending on mediaType
   useEffect(() => {
-    // cleanup previous
+  // cleanup previous
     setPreviewImage(null);
     if (previewVideo) {
       try {
@@ -59,7 +33,7 @@ export default function NodeComponent({
       } catch (e) {}
       setPreviewVideo(null);
     }
-    removeAudioOverlay();
+  try { clearOverlay && clearOverlay(node.id); } catch (e) {}
 
     if (!node || !node.mediaType || !node.mediaSrc) return;
 
@@ -75,7 +49,7 @@ export default function NodeComponent({
     } catch (e) {
       src = rawSrc;
     }
-    if (node.mediaType === "image") {
+  if (node.mediaType === "image") {
       // Fetch the image as a blob and create an object URL — this avoids
       // subtle issues with using proxied URLs or crossOrigin image loading
       // directly on Image.src which sometimes triggers onerror despite 200 OK.
@@ -116,10 +90,10 @@ export default function NodeComponent({
             const newHeight = Math.max(node.height || 100, LABEL_AREA + displayH + MEDIA_LABEL_AREA + 8);
 
             setImageDisplaySize({ w: displayW, h: displayH });
-            // persist new node size if changed
+            // persist only natural dimensions (do not auto-resize node)
             if (onUpdateNode) {
-              const changed = (newWidth !== node.width) || (newHeight !== node.height);
-              if (changed) onUpdateNode({ ...node, width: newWidth, height: newHeight });
+              const changedMediaDims = node.mediaNaturalWidth !== natW || node.mediaNaturalHeight !== natH;
+              if (changedMediaDims) onUpdateNode({ ...node, mediaNaturalWidth: natW, mediaNaturalHeight: natH });
             }
             setPreviewImage(img);
           };
@@ -174,6 +148,11 @@ export default function NodeComponent({
               const displayW = Math.min(newWidth - PAD_X, natW, MAX_IMAGE_DISPLAY_WIDTH);
               const displayH = Math.round((displayW * natH) / natW);
               setImageDisplaySize({ w: displayW, h: displayH });
+              // persist only natural dimensions for thumbnail; do not auto-resize
+              if (onUpdateNode) {
+                const changedMediaDims = node.mediaNaturalWidth !== natW || node.mediaNaturalHeight !== natH;
+                if (changedMediaDims) onUpdateNode({ ...node, mediaNaturalWidth: natW, mediaNaturalHeight: natH });
+              }
               setPreviewImage(img);
             };
             img.onerror = () => setPreviewImage(null);
@@ -190,211 +169,20 @@ export default function NodeComponent({
         };
       }
     } else if (node.mediaType === "audio") {
-      createAudioOverlay(src);
+      // audio preview is shown as a text label inside node; overlay can be opened by user action (double-click media)
+      // do not auto-create DOM overlays here — overlays are managed via MediaOverlayContext
+      // when a user attaches an audio file (blob URL), expand node to show a small control area
+      try {
+        // do not auto-resize for audio attachments; keep node size stable
+        // we could persist metadata here in the future if needed
+      } catch (e) {}
+      return;
     }
-
-    return () => {
-      // cleanup for this effect
-      removeVideoOverlay();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // end of media preview effect
   }, [node.mediaType, node.mediaSrc]);
 
-  // Auto-size node to fit label, text and media content when expanded.
-  useEffect(() => {
-    try {
-      if (!node) return;
-      // Only auto-resize for expanded nodes. When collapsed, the app's collapse
-      // handler will control width/height (keeps UI predictable).
-      if (!node.expanded) return;
+  // overlays are managed via MediaOverlayContext; manual DOM overlays removed
 
-      const PADDING_X = 16; // left + right total
-      const MIN_WIDTH = 140;
-      const MAX_WIDTH = 600;
-
-      const LABEL_FONT = 16;
-      const TEXT_FONT = 12;
-
-      // helper: measure text width using canvas 2D context
-      const measureTextWidth = (txt, fontSize, fontFamily = "Arial") => {
-        try {
-          const canvas = document.createElement("canvas");
-          const ctx = canvas.getContext("2d");
-          ctx.font = `${fontSize}px ${fontFamily}`;
-          const metrics = ctx.measureText(txt || "");
-          return Math.ceil(metrics.width || 0);
-        } catch (e) {
-          return 0;
-        }
-      };
-
-      // compute label width (single line)
-      const labelWidth = measureTextWidth(node.label || "", LABEL_FONT) + PADDING_X;
-
-      // compute text width: compute the max line width among lines (respect existing newlines)
-      const textRaw = node.text || "";
-      const textLines = textRaw.split(/\r?\n/);
-      let maxTextLineWidth = 0;
-      for (const line of textLines) {
-        const w = measureTextWidth(line, TEXT_FONT);
-        if (w > maxTextLineWidth) maxTextLineWidth = w;
-      }
-      // add padding
-      const textNeededWidth = Math.min(MAX_WIDTH, Math.max(maxTextLineWidth + PADDING_X, MIN_WIDTH));
-
-      // media width (if image/video) — prefer measured display size from state
-      const mediaWidth = (node.mediaType === "image" || node.mediaType === "video") ? (imageDisplaySize.w || 0) + PADDING_X : 0;
-
-      // desired width is the max of label/text/media required widths
-      let desiredWidth = Math.max(labelWidth, textNeededWidth, mediaWidth, MIN_WIDTH);
-      desiredWidth = Math.min(desiredWidth, MAX_WIDTH);
-
-      // compute heights
-      const labelHeight = Math.round(LABEL_FONT * 1.4) + 8; // small padding above/below
-
-      // for text height, simulate wrapping by using desired content width
-      const wrapWidth = Math.max(40, desiredWidth - PADDING_X);
-      const words = textRaw.split(/\s+/);
-      const lineHeight = Math.round(TEXT_FONT * 1.25);
-      let lines = 0;
-      if (!textRaw || textRaw.trim().length === 0) {
-        lines = 0; // no content — placeholder only
-      } else {
-        // naive word-wrap
-        let cur = "";
-        for (let i = 0; i < words.length; i++) {
-          const w = words[i];
-          const test = cur.length ? `${cur} ${w}` : w;
-          const testWidth = measureTextWidth(test, TEXT_FONT);
-          if (testWidth > wrapWidth && cur.length > 0) {
-            lines++;
-            cur = w;
-          } else {
-            cur = test;
-          }
-        }
-        if (cur.length) lines++;
-      }
-      const textHeight = Math.max(0, lines * lineHeight);
-
-      // media height: use imageDisplaySize.h for images; for video use a small fixed height; for audio/pdf use a small label area
-      let mediaContentHeight = 0;
-      if (node.mediaType === "image") mediaContentHeight = imageDisplaySize.h || 0;
-  else if (node.mediaType === "video") mediaContentHeight = 120; // smaller preview height for video
-      else if (node.mediaType === "audio" || node.mediaType === "pdf") mediaContentHeight = 36;
-
-      const MEDIA_LABEL_AREA = 28; // bottom area with the `Media: ...` label
-
-      const calculatedHeight = Math.max(node.height || 100, labelHeight + textHeight + mediaContentHeight + MEDIA_LABEL_AREA + 16);
-
-      // only persist if there's a meaningful change to avoid loops
-      const roundedDesiredWidth = Math.round(desiredWidth);
-      const roundedDesiredHeight = Math.round(calculatedHeight);
-      const widthChanged = Math.abs((node.width || 0) - roundedDesiredWidth) > 2;
-      const heightChanged = Math.abs((node.height || 0) - roundedDesiredHeight) > 2;
-      if ((widthChanged || heightChanged) && onUpdateNode) {
-        onUpdateNode({ ...node, width: roundedDesiredWidth, height: roundedDesiredHeight });
-      }
-    } catch (e) {
-      // swallow — sizing is best-effort
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node.label, node.text, node.mediaType, imageDisplaySize?.w, imageDisplaySize?.h, node.expanded]);
-
-  // create a small audio control overlay positioned on top of the node
-  const createAudioOverlay = (src) => {
-    removeAudioOverlay();
-    const stage = stageRef.current;
-    if (!stage || !groupRef.current) return;
-    const containerRect = stage.container().getBoundingClientRect();
-    const absPos = groupRef.current.getAbsolutePosition();
-
-    const wrapper = document.createElement("div");
-    wrapper.style.position = "absolute";
-    wrapper.style.zIndex = 999998;
-    wrapper.style.left = `${Math.round(containerRect.left + absPos.x + 8)}px`;
-    wrapper.style.top = `${Math.round(containerRect.top + absPos.y + 60)}px`;
-    wrapper.style.background = "rgba(255,255,255,0.95)";
-    wrapper.style.border = "1px solid #ddd";
-    wrapper.style.padding = "6px";
-    wrapper.style.borderRadius = "6px";
-
-    const audio = document.createElement("audio");
-    audio.controls = true;
-    audio.src = src;
-    audio.style.display = "block";
-    wrapper.appendChild(audio);
-
-    document.body.appendChild(wrapper);
-    audioOverlayRef.current = wrapper;
-  };
-
-  const removeAudioOverlay = () => {
-    const existing = audioOverlayRef.current;
-    if (existing && existing.parentNode) {
-      existing.parentNode.removeChild(existing);
-    }
-    audioOverlayRef.current = null;
-  };
-
-  const createVideoOverlay = (src) => {
-    removeVideoOverlay();
-    const stage = stageRef.current;
-    if (!stage || !groupRef.current) return;
-    const containerRect = stage.container().getBoundingClientRect();
-    const absPos = groupRef.current.getAbsolutePosition();
-
-    const wrapper = document.createElement("div");
-    wrapper.style.position = "absolute";
-    wrapper.style.zIndex = 999998;
-    wrapper.style.left = `${Math.round(containerRect.left + absPos.x + 8)}px`;
-    wrapper.style.top = `${Math.round(containerRect.top + absPos.y + 60)}px`;
-    wrapper.style.background = "rgba(0,0,0,0)";
-    wrapper.style.padding = "0px";
-    wrapper.style.borderRadius = "6px";
-
-    const width = Math.max(120, (imageDisplaySize.w || (node.width - 16)));
-    const height = Math.max(90, (imageDisplaySize.h || 120));
-    wrapper.style.width = `${width}px`;
-    wrapper.style.height = `${height}px`;
-
-  // detect YouTube links and embed via iframe (also accept embed URLs)
-  const youTubeMatch = (src || "").match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{6,})/i);
-    if (youTubeMatch) {
-      const id = youTubeMatch[1];
-      const iframe = document.createElement("iframe");
-      iframe.src = `https://www.youtube.com/embed/${id}`;
-      iframe.width = String(width);
-      iframe.height = String(height);
-      iframe.frameBorder = "0";
-      iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
-      iframe.allowFullscreen = true;
-      wrapper.appendChild(iframe);
-    } else {
-      // create a native video element for direct video URLs or blob URLs
-      const video = document.createElement("video");
-      video.src = src;
-      video.controls = true;
-      video.autoplay = false;
-      video.muted = false;
-      video.playsInline = true;
-      video.style.width = "100%";
-      video.style.height = "100%";
-      video.style.display = "block";
-      wrapper.appendChild(video);
-    }
-
-    document.body.appendChild(wrapper);
-    videoOverlayRef.current = wrapper;
-  };
-
-  const removeVideoOverlay = () => {
-    const existing = videoOverlayRef.current;
-    if (existing && existing.parentNode) {
-      existing.parentNode.removeChild(existing);
-    }
-    videoOverlayRef.current = null;
-  };
 
   // generic inline editor for label/text
   const startInlineEdit = (field, opts = {}) => (e) => {
@@ -557,6 +345,37 @@ export default function NodeComponent({
     } catch (err) {}
   };
 
+  // compute text and media positions so media doesn't overlap text
+  const contentWidth = Math.max(40, (node && node.width ? node.width - 16 : 140));
+  const textBlockHeight = computeTextBlockHeight(node && node.text ? node.text : '', contentWidth, 12);
+  const mediaContentHeight = (node && node.mediaType === 'image') ? (imageDisplaySize.h || 0) : (node && node.mediaType === 'video' ? (imageDisplaySize.h || 120) : (node && (node.mediaType === 'audio' || node.mediaType === 'pdf') ? 36 : 0));
+  const mediaY = 36 + (textBlockHeight || 0) + (textBlockHeight ? 8 : 0);
+  const mediaLabelY = mediaY + mediaContentHeight + 8;
+
+  const getMediaRect = (w, h, localX = 8, localY = mediaY) => {
+    try {
+      const g = groupRef.current;
+      if (!g) return { x: localX, y: localY, w: w || (node.width - 16), h: h || 90 };
+      const abs = g.getAbsolutePosition();
+      return { x: Math.round(abs.x + localX), y: Math.round(abs.y + localY), w: Math.round(w || (node.width - 16)), h: Math.round(h || 90) };
+    } catch (e) {
+      return { x: localX, y: localY, w: w || (node.width - 16), h: h || 90 };
+    }
+  };
+
+  const toggleOverlayForNode = (type, src, rect) => {
+    try {
+      if (!type || !src) return;
+      const existing = overlays && overlays[node.id];
+      if (existing) {
+        try { clearOverlay && clearOverlay(node.id); } catch (e) {}
+      } else {
+        const info = { id: node.id, type, src, rect };
+        setOverlay && setOverlay(node.id, info);
+      }
+    } catch (e) {}
+  };
+
   // drag / click / connect handlers
   return (
     <Group
@@ -635,9 +454,24 @@ export default function NodeComponent({
         onClick={(e) => {
           // stop propagation to group and toggle only when label is clicked
           try {
-            if (e && e.evt && e.evt.stopPropagation) e.evt.stopPropagation();
+              if (e && e.evt) {
+                try { e.evt.preventDefault && e.evt.preventDefault(); } catch (err) {}
+                try { e.evt.stopPropagation && e.evt.stopPropagation(); } catch (err) {}
+              }
           } catch (err) {}
-          if (onToggle) onToggle(!node.expanded);
+            if (onToggle) onToggle(!node.expanded);
+            // ensure we are not left in a dragging state after toggling
+            try {
+              const g = groupRef.current;
+              if (g) {
+                try { g.stopDrag && g.stopDrag(); } catch (err) {}
+                try { if (g.draggable) g.draggable(true); } catch (err) {}
+              }
+              const s = stageRef.current;
+              if (s && s.container) {
+                try { s.container().style.cursor = 'default'; } catch (err) {}
+              }
+            } catch (err) {}
         }}
       />
 
@@ -662,14 +496,20 @@ export default function NodeComponent({
             <KonvaImage
               image={previewImage}
               x={8}
-              y={36}
+              y={mediaY}
               width={imageDisplaySize.w || node.width - 16}
               height={imageDisplaySize.h || 56}
-              listening={false}
+              listening={true}
+              onClick={() => {
+                try {
+                  const rect = getMediaRect(imageDisplaySize.w || node.width - 16, imageDisplaySize.h || 56);
+                  toggleOverlayForNode('image', node.mediaSrc, rect);
+                } catch (e) {}
+              }}
             />
           )}
           {node.mediaType === "image" && !previewImage && (
-            <Text text={"Image failed to load"} fontSize={12} fill="#b71c1c" x={8} y={node.height - 68} />
+            <Text text={"Image failed to load"} fontSize={12} fill="#b71c1c" x={8} y={mediaY} />
           )}
 
           {node.mediaType === "video" && previewImage && (
@@ -677,14 +517,14 @@ export default function NodeComponent({
               <KonvaImage
                 image={previewImage}
                 x={8}
-                y={36}
+                y={mediaY}
                 width={imageDisplaySize.w || node.width - 16}
                 height={imageDisplaySize.h || 120}
                 listening={true}
                 onClick={() => {
                   try {
-                    // open overlay with the original mediaSrc (playable)
-                    createVideoOverlay(node.mediaSrc);
+                    const rect = getMediaRect(imageDisplaySize.w || node.width - 16, imageDisplaySize.h || 120);
+                    toggleOverlayForNode('video', node.mediaSrc, rect);
                   } catch (e) {}
                 }}
               />
@@ -692,11 +532,11 @@ export default function NodeComponent({
               <Line
                 points={[
                   8 + (imageDisplaySize.w || node.width - 16) / 2 - 10,
-                  36 + (imageDisplaySize.h || 120) / 2 - 12,
+                  mediaY + (imageDisplaySize.h || 120) / 2 - 12,
                   8 + (imageDisplaySize.w || node.width - 16) / 2 - 10,
-                  36 + (imageDisplaySize.h || 120) / 2 + 12,
+                  mediaY + (imageDisplaySize.h || 120) / 2 + 12,
                   8 + (imageDisplaySize.w || node.width - 16) / 2 + 12,
-                  36 + (imageDisplaySize.h || 120) / 2,
+                  mediaY + (imageDisplaySize.h || 120) / 2,
                 ]}
                 closed
                 fill="#ffffff"
@@ -707,15 +547,25 @@ export default function NodeComponent({
             </>
           )}
           {node.mediaType === "video" && !previewImage && (
-            <Text text={"Video attached (double-click to change)"} fontSize={12} fill="#555" x={8} y={node.height - 68} />
+            <Text text={"Video attached (double-click to change)"} fontSize={12} fill="#555" x={8} y={mediaY} />
           )}
 
           {node.mediaType === "audio" && (
-            <Text text={"Audio attached"} fontSize={12} fill="#555" x={8} y={node.height - 60} />
+            <Text text={"Audio attached"} fontSize={12} fill="#555" x={8} y={mediaY} onClick={() => {
+              try {
+                const rect = getMediaRect(Math.max(160, node.width - 16), 40);
+                toggleOverlayForNode('audio', node.mediaSrc, rect);
+              } catch (e) {}
+            }} />
           )}
 
           {node.mediaType === "pdf" && (
-            <Text text={"PDF attached"} fontSize={12} fill="#555" x={8} y={node.height - 60} />
+            <Text text={"PDF attached"} fontSize={12} fill="#555" x={8} y={mediaY} onClick={() => {
+              try {
+                const rect = getMediaRect(Math.max(260, node.width - 16), 320);
+                toggleOverlayForNode('pdf', node.mediaSrc, rect);
+              } catch (e) {}
+            }} />
           )}
 
           <Text
@@ -723,7 +573,7 @@ export default function NodeComponent({
             fontSize={12}
             fill="#555"
             x={8}
-            y={node.height - 20}
+            y={mediaLabelY}
             onDblClick={onDoubleClickMedia}
           />
         </>

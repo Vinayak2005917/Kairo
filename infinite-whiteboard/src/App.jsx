@@ -3,6 +3,8 @@ import { Stage, Layer, Arrow, Rect, Circle } from "react-konva";
 import Konva from "konva";
 import { Node } from "./models/Node.js";
 import NodeComponent from "./components/NodeComponent.jsx";
+import { MediaOverlayProvider } from "./components/MediaOverlayContext.jsx";
+import MediaOverlayLayer from "./components/MediaOverlayLayer.jsx";
 import userLogo from "./enso-user-logo.png";
 import "./App.css";
 
@@ -199,19 +201,60 @@ export default function App() {
 
   // toggle expanded / collapsed state
   const handleToggleExpand = (id, expanded) => {
-    const COLLAPSED_WIDTH = 150; // width to use when node is collapsed
+    // Fixed defaults (no auto-resize). Choose sizes large enough for media previews + text.
+    const COLLAPSED_WIDTH = 200; // collapsed node width
+    const EXPANDED_DEFAULT = { width: 420, height: 320 };
     setNodes((prev) =>
-      prev.map((n) =>
-        n.id === id
-          ? {
-              ...n,
-              expanded,
-              width: expanded ? n.width : COLLAPSED_WIDTH,
-            }
-          : n
-      )
+      prev.map((n) => {
+        if (n.id !== id) return n;
+        if (!expanded) {
+          return { ...n, expanded: false, width: COLLAPSED_WIDTH, height: n.height };
+        }
+        // expanding: ensure node is at least the expanded default size
+        const newWidth = n.width && n.width > EXPANDED_DEFAULT.width ? n.width : EXPANDED_DEFAULT.width;
+        const newHeight = n.height && n.height > EXPANDED_DEFAULT.height ? n.height : EXPANDED_DEFAULT.height;
+        return { ...n, expanded: true, width: newWidth, height: newHeight };
+      })
     );
   };
+
+  // ensure arrows update when a node collapses/expands
+  // we update the cached center for the toggled node and recompute any connected arrows
+  useEffect(() => {
+    // nothing to do until nodes or arrow refs exist
+    if (!nodes || nodes.length === 0) return;
+
+    // find any nodes whose expanded state recently changed by comparing cache sizes
+    // Instead, respond to nodes changes by refreshing arrow endpoints for all connections
+    // to avoid missing any updates (cheap enough for typical boards)
+    try {
+      // rebuild center cache for all nodes (authoritative)
+      nodes.forEach((n) => {
+        nodeCenterCache.current[n.id] = {
+          x: n.x + (n.width || 150) / 2,
+          y: n.y + (n.expanded ? n.height || 100 : 40) / 2,
+        };
+      });
+
+      // recompute all arrows
+      nodes.forEach((node) => {
+        (node.connections || []).forEach((targetId) => {
+          const srcNode = findNode(node.id) || node;
+          const tgtNode = findNode(targetId) || {};
+          const srcCenter = nodeCenterCache.current[srcNode.id] || { x: srcNode.x + (srcNode.width || 150) / 2, y: srcNode.y + (srcNode.expanded ? srcNode.height : 40) / 2 };
+          const tgtCenter = nodeCenterCache.current[tgtNode.id] || { x: tgtNode.x + (tgtNode.width || 150) / 2, y: tgtNode.y + (tgtNode.expanded ? tgtNode.height : 40) / 2 };
+          const points = computeEdgePointsFromCenters(srcCenter, srcNode, tgtCenter, tgtNode);
+          const arrowKey = `${node.id}->${targetId}`;
+          const arrowRef = arrowRefs.current[arrowKey];
+          if (arrowRef) arrowRef.points(points);
+        });
+      });
+
+      arrowLayerRef.current?.batchDraw();
+    } catch (e) {
+      // harmless if stage/refs not ready yet
+    }
+  }, [nodes]);
 
   // (node editing removed) -- inline editing and resize callbacks are disabled
 
@@ -449,6 +492,7 @@ export default function App() {
         </div>
       </div>
 
+      <MediaOverlayProvider>
       <Stage
         ref={stageRef}
         width={window.innerWidth}
@@ -614,6 +658,9 @@ export default function App() {
           ))}
         </Layer>
       </Stage>
+        {/* Media overlays (React-managed DOM overlays) */}
+        <MediaOverlayLayer stageRef={stageRef} />
+        </MediaOverlayProvider>
 
       {/* Inline node editing removed */}
       {/* Small instruction pill (bottom-left) */}
