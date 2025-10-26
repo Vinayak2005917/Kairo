@@ -199,12 +199,69 @@ export default function App() {
 
   // toggle expanded / collapsed state
   const handleToggleExpand = (id, expanded) => {
-    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, expanded } : n)));
+    const COLLAPSED_WIDTH = 150; // width to use when node is collapsed
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === id
+          ? {
+              ...n,
+              expanded,
+              width: expanded ? n.width : COLLAPSED_WIDTH,
+            }
+          : n
+      )
+    );
   };
 
   // (node editing removed) -- inline editing and resize callbacks are disabled
 
   const findNode = (id) => nodes.find((n) => n.id === id);
+
+  // Resolve overlap by nudging the updated node until it no longer intersects others.
+  const rectsIntersect = (a, b) => {
+    return !(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y);
+  };
+
+  const handleUpdateNode = (updated) => {
+    setNodes((prev) => {
+      const existing = prev.find((p) => p.id === updated.id) || {};
+      const baseX = updated.x !== undefined ? updated.x : existing.x || 0;
+      const baseY = updated.y !== undefined ? updated.y : existing.y || 0;
+      const width = updated.width !== undefined ? updated.width : existing.width || 150;
+      const height = (updated.expanded !== undefined ? (updated.expanded ? (updated.height !== undefined ? updated.height : existing.height || 100) : 40) : (existing.expanded ? existing.height || 100 : 40));
+
+      let newX = baseX;
+      let newY = baseY;
+
+      const others = prev.filter((p) => p.id !== updated.id);
+      let attempts = 0;
+      const MAX_ATTEMPTS = 200;
+      while (attempts < MAX_ATTEMPTS) {
+        const r1 = { x: newX, y: newY, width, height };
+        const collision = others.find((o) => {
+          const oRect = { x: o.x, y: o.y, width: o.width || 150, height: o.expanded ? o.height || 100 : 40 };
+          return rectsIntersect(r1, oRect);
+        });
+        if (!collision) break;
+        // simple nudge strategy: move right by 24px; if too far, wrap down
+        newX += Math.max(24, Math.round((collision.width || 150) / 2));
+        if (newX > window.innerWidth * 2) {
+          newX = 40;
+          newY += Math.max(40, Math.round((collision.height || 100) / 2));
+        }
+        attempts++;
+      }
+
+      // Merge updates and set resolved position
+      return prev.map((p) => (p.id === updated.id ? { ...p, ...updated, x: newX, y: newY } : p));
+    });
+    // update center cache for this node (best-effort)
+    const up = updated;
+    nodeCenterCache.current[up.id] = {
+      x: (up.x !== undefined ? up.x : (findNode(up.id)?.x || 0)) + ((up.width !== undefined ? up.width : findNode(up.id)?.width || 150) / 2),
+      y: (up.y !== undefined ? up.y : (findNode(up.id)?.y || 0)) + ((up.expanded ? (up.height !== undefined ? up.height : findNode(up.id)?.height || 100) : 40) / 2),
+    };
+  };
 
   // resize handling removed — nodes are not resizable via UI
 
@@ -552,10 +609,7 @@ export default function App() {
                 // otherwise do nothing here — label click handles expand/collapse.
               }}
               isHighlighted={highlightedNodeId === node.id}
-              onUpdateNode={(updated) => {
-                // merge any updated fields (label, text, mediaType, mediaSrc, etc.)
-                setNodes((prev) => prev.map(n => n.id === updated.id ? { ...n, ...updated } : n));
-              }}
+              onUpdateNode={handleUpdateNode}
             />
           ))}
         </Layer>
