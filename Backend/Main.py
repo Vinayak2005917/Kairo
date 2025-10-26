@@ -8,7 +8,6 @@ import requests
 from fastapi.responses import StreamingResponse
 from urllib.parse import unquote
 import uvicorn
-from Main import app 
 
 # Node schema
 class NodeData(BaseModel):
@@ -52,14 +51,8 @@ def load_nodes():
 # POST: Save nodes to file
 @app.post("/save")
 def save_nodes(graph: dict = Body(...)):
-    """
-    Accept a flexible JSON payload and persist the `nodes` key to disk.
-    Using a free-form dict here avoids 422 errors when the frontend sends
-    node objects that don't exactly match the Pydantic `NodeData` schema.
-    """
     nodes = graph.get("nodes") if isinstance(graph, dict) else None
     if nodes is None:
-        # fallback: try to write the whole payload under `nodes` key
         nodes = []
     with open(FILE_PATH, "w") as f:
         json.dump({"nodes": nodes}, f, indent=4)
@@ -68,17 +61,10 @@ def save_nodes(graph: dict = Body(...)):
 
 @app.get("/proxy-image")
 def proxy_image(url: str):
-    """
-    Simple image proxy: fetches the remote URL and streams it back with the
-    original Content-Type. Use for loading third-party images that block
-    cross-origin access. Example: /proxy-image?url=https://example.com/img.jpg
-    """
-    # basic validation
     if not (url.startswith("http://") or url.startswith("https://")):
         return {"error": "invalid url"}
 
     try:
-        # use a browser-like user agent to avoid some sites returning bot blocks
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
         r = requests.get(url, stream=True, timeout=10, headers=headers, allow_redirects=True)
         r.raise_for_status()
@@ -86,7 +72,6 @@ def proxy_image(url: str):
         raise HTTPException(status_code=502, detail=f"failed to fetch remote resource: {e}")
 
     content_type = (r.headers.get("Content-Type") or "").lower()
-    # ensure we only proxy image/* types (reject html, video, etc.) to avoid surprises
     if not content_type.startswith("image/"):
         raise HTTPException(status_code=415, detail=f"remote resource is not an image (Content-Type: {content_type})")
 
