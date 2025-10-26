@@ -407,7 +407,7 @@ export default function App() {
   // Removed Konva.Animation as we update arrows directly in onDragMove
 
   // Background dots configuration
-  const dotStep = 60; // spacing between dots in stage coordinates
+  const dotStep = 80; // spacing between dots in stage coordinates
   const dotRadius = 3;
   const dotColor = "#1976d2"; // blue
   const dotOpacity = 0.4;
