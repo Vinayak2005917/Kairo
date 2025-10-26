@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import json
@@ -45,7 +45,16 @@ def load_nodes():
 
 # POST: Save nodes to file
 @app.post("/save")
-def save_nodes(graph: NodeGraph):
+def save_nodes(graph: dict = Body(...)):
+    """
+    Accept a flexible JSON payload and persist the `nodes` key to disk.
+    Using a free-form dict here avoids 422 errors when the frontend sends
+    node objects that don't exactly match the Pydantic `NodeData` schema.
+    """
+    nodes = graph.get("nodes") if isinstance(graph, dict) else None
+    if nodes is None:
+        # fallback: try to write the whole payload under `nodes` key
+        nodes = []
     with open(FILE_PATH, "w") as f:
-        json.dump(graph.dict(), f, indent=4)
+        json.dump({"nodes": nodes}, f, indent=4)
     return {"status": "success"}

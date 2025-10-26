@@ -548,10 +548,14 @@ export default function App() {
                   setHighlightedNodeId(null);
                   return;
                 }
-                // otherwise fall back to toggling expand (preserve old behavior)
-                handleToggleExpand(id, !findNode(id)?.expanded);
+
+                // otherwise do nothing here — label click handles expand/collapse.
               }}
               isHighlighted={highlightedNodeId === node.id}
+              onUpdateNode={(updated) => {
+                // merge any updated fields (label, text, mediaType, mediaSrc, etc.)
+                setNodes((prev) => prev.map(n => n.id === updated.id ? { ...n, ...updated } : n));
+              }}
             />
           ))}
         </Layer>
