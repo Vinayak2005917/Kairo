@@ -4,6 +4,7 @@ import Konva from "konva";
 import { Node } from "./models/Node.js";
 import NodeComponent from "./components/NodeComponent.jsx";
 import userLogo from "./enso-user-logo.png";
+import "./App.css";
 
 export default function App() {
   const stageRef = useRef();
@@ -134,21 +135,22 @@ export default function App() {
   };
 
     // 🧠 Live update (while dragging) - optimize by updating arrows directly with throttling
-  let frameId = useRef(null);
-  const handleNodeMove = (id, newX, newY) => {
-    // Update node position in state for other purposes
-    setNodes((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, x: newX, y: newY } : n))
-    );
+    const frameId = useRef(null);
+    const handleNodeMove = (id, newX, newY) => {
+      // NOTE: avoid calling setNodes here — updating React state on every drag event
+      // causes a full re-render of all nodes and layers and leads to janky dragging.
+      // Instead we only update the cached center (used for arrows) and update
+      // arrow refs directly in the rAF callback. The authoritative node x/y is
+      // persisted on drag end (handleNodeDragEnd).
 
-    // Update cache
-    const node = findNode(id);
-    if (node) {
-      nodeCenterCache.current[id] = {
-        x: newX + (node.width || 150) / 2,
-        y: newY + (node.expanded ? node.height : 40) / 2,
-      };
-    }
+      // Update cache for this moving node so arrows use fresh positions
+      const node = findNode(id);
+      if (node) {
+        nodeCenterCache.current[id] = {
+          x: newX + (node.width || 150) / 2,
+          y: newY + (node.expanded ? node.height : 40) / 2,
+        };
+      }
 
     // Throttle updates to 60fps
     if (frameId.current) return;
@@ -200,57 +202,11 @@ export default function App() {
     setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, expanded } : n)));
   };
 
-  // request edit (open inline editor) for a node
-  const [editingNodeId, setEditingNodeId] = useState(null);
-
-  const handleRequestEdit = (id) => {
-    setEditingNodeId(id);
-  };
-
-  // update node fields
-  const handleUpdateNode = (id, patch) => {
-    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
-  };
+  // (node editing removed) -- inline editing and resize callbacks are disabled
 
   const findNode = (id) => nodes.find((n) => n.id === id);
 
-  const handleResize = (id, width, height, x, y) => {
-    setNodes((prev) =>
-      prev.map((n) =>
-        n.id === id
-          ? {
-              ...n,
-              // mark expanded when user explicitly resizes so the Rect uses the new height
-              expanded: true,
-              width,
-              height,
-              ...(typeof x === "number" ? { x } : {}),
-              ...(typeof y === "number" ? { y } : {}),
-            }
-          : n
-      )
-    );
-
-    // if we have a Konva ref for this node, ask its layer to redraw so visual update is immediate
-    try {
-      const ref = nodeRefs.current && nodeRefs.current[id];
-      const layer = ref && ref.getLayer && ref.getLayer();
-      layer && layer.batchDraw();
-    } catch (e) {
-      // ignore if layer not available yet
-    }
-
-    // Update cache if position changed
-    if (typeof x === "number" || typeof y === "number") {
-      const updatedNode = nodes.find(n => n.id === id);
-      if (updatedNode) {
-        nodeCenterCache.current[id] = {
-          x: (typeof x === "number" ? x : updatedNode.x) + (width || updatedNode.width || 150) / 2,
-          y: (typeof y === "number" ? y : updatedNode.y) + (height || updatedNode.height || 40) / 2,
-        };
-      }
-    }
-  };
+  // resize handling removed — nodes are not resizable via UI
 
   // keep refs to Konva node Groups so arrows can read positions directly
   const nodeRefs = useRef({});
@@ -505,8 +461,6 @@ export default function App() {
               onDragMove={handleNodeMove}
               onToggle={(expanded) => handleToggleExpand(node.id, expanded)}
               registerRef={(r) => registerNode(node.id, r)}
-              onRequestEdit={handleRequestEdit}
-              onResize={handleResize}
               onStartConnect={(id) => setConnectingFromId(id)}
               onNodeClick={(id, e) => {
                 // if we are creating a connection, complete it by clicking another node
@@ -537,76 +491,19 @@ export default function App() {
         </Layer>
       </Stage>
 
-      {/* Inline editor overlay (renders above the stage) */}
-      {editingNodeId && nodeRefs.current[editingNodeId] && (
-        (() => {
-          const stage = stageRef.current;
-          const nodeRef = nodeRefs.current[editingNodeId];
-          if (!stage || !nodeRef) return null;
-          const abs = nodeRef.getAbsolutePosition();
-          const tr = stage.getAbsoluteTransform();
-          const point = tr.point({ x: abs.x, y: abs.y });
-          const rect = stage.container().getBoundingClientRect();
-          const left = rect.left + point.x;
-          const top = rect.top + point.y;
-          const node = findNode(editingNodeId);
-          const width = node ? node.width : 200;
-          return (
-            <div
-              style={{
-                position: "absolute",
-                left: left,
-                top: top,
-                zIndex: 2000,
-                background: "rgba(255,255,255,0.95)",
-                padding: 8,
-                borderRadius: 6,
-                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                width: width,
-              }}
-            >
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input
-                  value={node?.label || ""}
-                  onChange={(e) => handleUpdateNode(editingNodeId, { label: e.target.value })}
-                  style={{ flex: 1, fontWeight: 600 }}
-                />
-                <button onClick={() => setEditingNodeId(null)}>Done</button>
-              </div>
-              <textarea
-                value={node?.content || ""}
-                onChange={(e) => handleUpdateNode(editingNodeId, { content: e.target.value })}
-                placeholder="Enter text..."
-                style={{ width: "100%", marginTop: 8, minHeight: 80 }}
-              />
+      {/* Inline node editing removed */}
+      {/* Bottom centered prompt input */}
+      <div className="prompt-bar-container">
+        <div className="prompt-bar">
+          <input
+            className="prompt-input"
+            placeholder="Enter a prompt for making your Mind Maps..."
+            aria-label="mindmap prompt"
+          />
+          <button className="prompt-btn">Generate</button>
+        </div>
+      </div>
 
-              <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    style={{ display: "none" }}
-                    onChange={async (e) => {
-                      const f = e.target.files && e.target.files[0];
-                      if (!f) return;
-                      const reader = new FileReader();
-                      reader.onload = () => {
-                        handleUpdateNode(editingNodeId, { image: reader.result });
-                      };
-                      reader.readAsDataURL(f);
-                    }}
-                  />
-                  <span style={{ fontSize: 18 }}>➕</span>
-                  <span>Add image</span>
-                </label>
-                {node?.image && (
-                  <img src={node.image} alt="preview" style={{ maxHeight: 64, borderRadius: 4 }} />
-                )}
-              </div>
-            </div>
-          );
-        })()
-      )}
     </div>
   );
 }

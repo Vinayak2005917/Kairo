@@ -57,3 +57,65 @@ html, body, #root {
 .read-the-docs {
   color: #888;
 }
+
+/* Bottom centered prompt bar (input + generate button) */
+.prompt-bar-container {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 36px; /* distance from bottom of viewport */
+  z-index: 1200;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  pointer-events: none; /* allow inner bar to opt-in to pointer events */
+}
+
+.prompt-bar {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: min(920px, calc(100% - 48px));
+  background: #2f2f31; /* dark rounded bar */
+  color: #eee;
+  padding: 16px 20px;
+  border-radius: 18px;
+  box-shadow: 0 14px 30px rgba(12, 18, 30, 0.45);
+  border: 1px solid rgba(0,0,0,0.45);
+}
+
+.prompt-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #e6e6e6;
+  font-size: 16px;
+  padding: 6px 8px;
+  line-height: 1;
+}
+
+.prompt-input::placeholder {
+  color: #bdbdbd;
+}
+
+.prompt-btn {
+  background: #00c853; /* vivid green */
+  color: white;
+  border: none;
+  border-radius: 22px;
+  padding: 10px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(0,200,83,0.18);
+}
+
+.prompt-btn:active {
+  transform: translateY(1px);
+}
+
+@media (max-width: 520px) {
+  .prompt-bar { width: calc(100% - 28px); padding: 12px 14px; }
+  .prompt-btn { padding: 8px 12px; }
+}
