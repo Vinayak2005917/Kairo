@@ -37,11 +37,11 @@ export default function NodeComponent({
     if (!node || !node.mediaType || !node.mediaSrc) return;
 
     const raw = node.mediaSrc || "";
-    // For remote http(s) use proxy path to avoid CORS if needed
+    // For remote http(s) use proxy path to avoid CORS only for images
     let src = raw;
     try {
-      if (/^https?:\/\//i.test(raw)) {
-        src = `http://localhost:8000/proxy-image?url=${encodeURIComponent(raw)}`;
+      if (/^https?:\/\//i.test(raw) && node.mediaType === 'image') {
+        src = `https://kairo-e6g5.onrender.com/proxy-image?url=${encodeURIComponent(raw)}`;
       }
     } catch (e) {}
 

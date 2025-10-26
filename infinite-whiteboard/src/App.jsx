@@ -45,7 +45,7 @@ export default function App() {
   // Load nodes from backend on mount (no local fallback)
   const loadNodes = async () => {
     try {
-      const res = await fetch("http://localhost:8000/load");
+      const res = await fetch("https://kairo-e6g5.onrender.com/load");
       const data = await res.json();
       if (data && Array.isArray(data.nodes)) {
         setNodes(data.nodes);
@@ -91,7 +91,7 @@ export default function App() {
   // Save nodes to backend
   const saveNodes = async () => {
     try {
-      await fetch("http://localhost:8000/save", {
+      await fetch("https://kairo-e6g5.onrender.com/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nodes }),
