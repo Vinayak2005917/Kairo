@@ -7,6 +7,7 @@ import os
 import requests
 from fastapi.responses import StreamingResponse
 from urllib.parse import unquote
+import uvicorn
 
 # Node schema
 class NodeData(BaseModel):
@@ -89,3 +90,10 @@ def proxy_image(url: str):
         raise HTTPException(status_code=415, detail=f"remote resource is not an image (Content-Type: {content_type})")
 
     return StreamingResponse(r.iter_content(chunk_size=8192), media_type=content_type)
+
+
+if __name__ == "__main__":
+    # Run the app directly: useful for development.
+    # This will start a Uvicorn server on localhost:8000
+    print("Starting backend server at http://127.0.0.1:8000")
+    uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
