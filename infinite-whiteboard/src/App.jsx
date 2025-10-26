@@ -225,6 +225,7 @@ export default function App() {
   // interactive connection creation state
   const [connectingFromId, setConnectingFromId] = useState(null);
   const [tempPointer, setTempPointer] = useState(null); // {x,y} in stage coords
+  const [highlightedNodeId, setHighlightedNodeId] = useState(null);
 
   // helper: compute edge points using cached centers
   const computeEdgePointsFromCenters = (srcCenter, srcNode, tgtCenter, tgtNode) => {
@@ -264,6 +265,43 @@ export default function App() {
     const sy = srcCenter.y + dy / t1;
 
     return [sx, sy, endX, endY];
+  };
+
+  // Start connecting from a node (called by NodeComponent)
+  const handleStartConnect = (id) => {
+    setConnectingFromId(id);
+    const srcNode = findNode(id);
+    if (srcNode) {
+      nodeCenterCache.current[id] = nodeCenterCache.current[id] || { x: srcNode.x + (srcNode.width || 150) / 2, y: srcNode.y + (srcNode.expanded ? srcNode.height : 40) / 2 };
+      const c = nodeCenterCache.current[id];
+      setTempPointer({ x: c.x, y: c.y });
+    }
+  };
+
+  // Complete connecting to a target node
+  const handleCompleteConnect = (targetId) => {
+    if (!connectingFromId) return;
+    if (connectingFromId === targetId) {
+      // cancel if same node
+      setConnectingFromId(null);
+      setTempPointer(null);
+      setHighlightedNodeId(null);
+      return;
+    }
+
+    // add directed connection from connectingFromId -> targetId (avoid duplicates)
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === connectingFromId
+          ? { ...n, connections: Array.from(new Set([...(n.connections || []), targetId])) }
+          : n
+      )
+    );
+
+    // clear temp state
+    setConnectingFromId(null);
+    setTempPointer(null);
+    setHighlightedNodeId(null);
   };
 
   // Removed Konva.Animation as we update arrows directly in onDragMove
@@ -370,17 +408,43 @@ export default function App() {
           if (!s) return;
           const pos = s.getPointerPosition();
           if (!pos) return;
-          setTempPointer({ x: pos.x, y: pos.y });
+
+          // detect whether pointer is over another node (simple bbox check)
+          let hoverNode = null;
+          for (const n of nodes) {
+            if (n.id === connectingFromId) continue; // skip source
+            const left = n.x;
+            const top = n.y;
+            const right = n.x + (n.width || 150);
+            const bottom = n.y + (n.expanded ? n.height : 40);
+            // if pointer inside bbox
+            if (pos.x >= left - 8 && pos.x <= right + 8 && pos.y >= top - 8 && pos.y <= bottom + 8) {
+              hoverNode = n;
+              break;
+            }
+          }
+
+          // if hovering a node, snap endpoint to its edge for a polished look
+          if (hoverNode) {
+            setHighlightedNodeId(hoverNode.id);
+            const srcNode = findNode(connectingFromId);
+            const srcCenter = nodeCenterCache.current[connectingFromId] || { x: srcNode.x + (srcNode.width || 150) / 2, y: srcNode.y + (srcNode.expanded ? srcNode.height : 40) / 2 };
+            const tgtCenter = nodeCenterCache.current[hoverNode.id] || { x: hoverNode.x + (hoverNode.width || 150) / 2, y: hoverNode.y + (hoverNode.expanded ? hoverNode.height : 40) / 2 };
+            const pts = computeEdgePointsFromCenters(srcCenter, srcNode, tgtCenter, hoverNode);
+            // use target edge as endpoint
+            setTempPointer({ x: pts[2], y: pts[3] });
+          } else {
+            setHighlightedNodeId(null);
+            setTempPointer({ x: pos.x, y: pos.y });
+          }
         }}
         onMouseDown={(e) => {
           // if user clicks empty space while connecting, cancel
           if (connectingFromId) {
-            // determine whether click was on empty area by checking target
-            const shape = e.target;
-            if (shape && shape === stageRef.current) {
-              setConnectingFromId(null);
-              setTempPointer(null);
-            }
+            // cancel connection on stage mouse down
+            setConnectingFromId(null);
+            setTempPointer(null);
+            setHighlightedNodeId(null);
           }
         }}
         style={{ display: "block", background: "transparent" }}
@@ -461,17 +525,17 @@ export default function App() {
               onDragMove={handleNodeMove}
               onToggle={(expanded) => handleToggleExpand(node.id, expanded)}
               registerRef={(r) => registerNode(node.id, r)}
-              onStartConnect={(id) => setConnectingFromId(id)}
+              onStartConnect={handleStartConnect}
+              onCompleteConnect={handleCompleteConnect}
               onNodeClick={(id, e) => {
-                // if we are creating a connection, complete it by clicking another node
+                // clicking (without shift) while connecting should also allow completing connection
                 if (connectingFromId) {
-                  // clicking same node cancels
                   if (connectingFromId === id) {
                     setConnectingFromId(null);
                     setTempPointer(null);
+                    setHighlightedNodeId(null);
                     return;
                   }
-                  // add connection from connectingFromId -> id (avoid duplicates)
                   setNodes((prev) =>
                     prev.map((n) =>
                       n.id === connectingFromId
@@ -481,23 +545,41 @@ export default function App() {
                   );
                   setConnectingFromId(null);
                   setTempPointer(null);
+                  setHighlightedNodeId(null);
                   return;
                 }
                 // otherwise fall back to toggling expand (preserve old behavior)
                 handleToggleExpand(id, !findNode(id)?.expanded);
               }}
+              isHighlighted={highlightedNodeId === node.id}
             />
           ))}
         </Layer>
       </Stage>
 
       {/* Inline node editing removed */}
+      {/* Small instruction pill (bottom-left) */}
+      <div style={{ position: "absolute", zIndex: 300, right: 12, top: 18 }}>
+        <div style={{
+          padding: "8px 12px",
+          borderRadius: 8,
+          background: "rgba(25,118,210,0.95)",
+          color: "white",
+          fontSize: 13,
+          boxShadow: "0 8px 20px rgba(11,22,55,0.12)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          maxWidth: 320
+        }}>
+          Hold down Shift and drag from any node to another to connect them
+        </div>
+      </div>
+
       {/* Bottom centered prompt input */}
       <div className="prompt-bar-container">
         <div className="prompt-bar">
           <input
             className="prompt-input"
-            placeholder="Enter a prompt for making your Mind Maps..."
+            placeholder="(Does not work at all right now) Enter a prompt for making your Mind Maps..."
             aria-label="mindmap prompt"
           />
           <button className="prompt-btn">Generate</button>

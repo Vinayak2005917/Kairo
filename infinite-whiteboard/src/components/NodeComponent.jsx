@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Group, Rect, Text, Image as KonvaImage } from "react-konva";
 
-export default function NodeComponent({ node, onDragEnd, onDragMove, registerRef, onToggle, onStartConnect, onNodeClick }) {
+export default function NodeComponent({ node, onDragEnd, onDragMove, registerRef, onToggle, onStartConnect, onCompleteConnect, onNodeClick, isHighlighted }) {
   const groupRef = useRef(null);
   const [img, setImg] = useState(null);
   const stageRef = useRef(null);
@@ -61,16 +61,45 @@ export default function NodeComponent({ node, onDragEnd, onDragMove, registerRef
         }
         if (onToggle) onToggle(!node.expanded);
       }}
-      onDblClick={(e) => {
-        if (onStartConnect) {
-          e.cancelBubble = true;
-          onStartConnect(node.id);
-        }
+      onMouseDown={(e) => {
+        // Start a connection if user holds Shift while mousing down (assumption: use Shift+drag to connect)
+        try {
+          if (e.evt && e.evt.shiftKey) {
+            // temporarily disable dragging so we can draw connection instead of moving node
+            const g = groupRef.current;
+            if (g && g.draggable) {
+              try { g.draggable(false); } catch (err) {}
+            }
+            e.cancelBubble = true;
+            if (onStartConnect) onStartConnect(node.id);
+          }
+        } catch (err) {}
+      }}
+      onMouseUp={(e) => {
+        // Complete a connection if the parent is in connecting mode
+        try {
+          const g = groupRef.current;
+          if (g && g.draggable) {
+            try { g.draggable(true); } catch (err) {}
+          }
+          if (e.evt && e.evt.shiftKey) {
+            // if we started connecting with shift, complete connection
+            if (onCompleteConnect) onCompleteConnect(node.id);
+            e.cancelBubble = true;
+          }
+        } catch (err) {}
       }}
       onDragMove={(e) => {
         if (onDragMove) onDragMove(node.id, e.target.x(), e.target.y());
       }}
       onDragEnd={(e) => {
+        // ensure draggable is restored after drag
+        try {
+          const g = groupRef.current;
+          if (g && g.draggable) {
+            try { g.draggable(true); } catch (err) {}
+          }
+        } catch (err) {}
         onDragEnd(node.id, e.target.x(), e.target.y());
       }}
     >
@@ -80,8 +109,8 @@ export default function NodeComponent({ node, onDragEnd, onDragMove, registerRef
         height={node.expanded ? node.height : 40}
         fill={node.color}
         cornerRadius={10}
-        stroke="#6b6b6bff"
-        strokeWidth={1}
+        stroke={isHighlighted ? "#1976d2" : "#6b6b6bff"}
+        strokeWidth={isHighlighted ? 2 : 1}
       />
 
       {/* label always visible */}

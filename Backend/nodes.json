@@ -11,14 +11,16 @@
             "contentType": "text",
             "content": "This is the central concept.",
             "connections": [
-                "2"
+                "2",
+                "1761424272836",
+                "1761424572817"
             ]
         },
         {
             "id": "2",
             "label": "Reference Image",
-            "x": 47.0,
-            "y": 212.0,
+            "x": 9.0,
+            "y": 213.0,
             "width": 400.0,
             "height": 284.0,
             "color": "#f48fb1",
@@ -31,20 +33,22 @@
         {
             "id": "1761424272836",
             "label": "New Node",
-            "x": 1160.0,
-            "y": 409.0,
+            "x": 1148.0,
+            "y": 435.0,
             "width": 150.0,
             "height": 80.0,
             "color": "#a5d6a7",
             "contentType": "text",
             "content": "",
-            "connections": []
+            "connections": [
+                "1"
+            ]
         },
         {
             "id": "1761424572817",
             "label": "New Node",
-            "x": 604.0,
-            "y": 432.0,
+            "x": 612.0,
+            "y": 420.0,
             "width": 150.0,
             "height": 80.0,
             "color": "#a5d6a7",
